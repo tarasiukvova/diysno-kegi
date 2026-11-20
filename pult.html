@@ -169,12 +169,28 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
   function kegs(n) { return n + " " + pl(n, "кег", "кеги", "кегів"); }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function toast(t) { if (!t) return; var el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { el.hidden = true; }, 2600); }
-  function store() { try { localStorage.setItem(LS, JSON.stringify({ k: auth.k, pin: auth.pin, packed: ui.packed })); } catch (e) {} }
+  // Входи запам'ятовуються окремо для Пульта і для Броварні; ?r=pult або ?r=brovarnia вибирає, який відкрити.
+  var roles = {}, last = "", legacy = null, want = "";
+  function store() { try { localStorage.setItem(LS, JSON.stringify({ roles: roles, last: last, packed: ui.packed })); } catch (e) {} }
+  function use(c) { if (c && c.k) auth = { k: c.k, pin: c.pin || "" }; }
+  function param(role) { return role === "tseh" ? "brovarnia" : "pult"; }
+  function roleName(role) { return role === "tseh" ? "Броварня" : "Пульт"; }
 
-  try { var saved = JSON.parse(localStorage.getItem(LS) || "{}"); auth.k = saved.k || ""; auth.pin = saved.pin || ""; ui.packed = saved.packed || {}; } catch (e) {}
   try {
-    var qk = new URLSearchParams(location.search).get("k");
-    if (qk) { if (qk !== auth.k) auth.pin = ""; auth.k = qk; store(); history.replaceState(null, "", location.pathname); }
+    var saved = JSON.parse(localStorage.getItem(LS) || "{}");
+    if (saved.roles && typeof saved.roles === "object") roles = saved.roles;
+    last = saved.last || ""; ui.packed = saved.packed || {};
+    if (saved.k) legacy = { k: saved.k, pin: saved.pin || "" };
+  } catch (e) {}
+  try {
+    var qs = new URLSearchParams(location.search), qk = qs.get("k"), qr = qs.get("r");
+    want = qr === "brovarnia" ? "tseh" : qr === "pult" ? "pult" : "";
+    if (qk) {
+      auth = { k: qk, pin: "" }; want = "";
+      [roles.pult, roles.tseh, legacy].forEach(function (c) { if (c && c.k === qk) auth.pin = c.pin || ""; });
+      history.replaceState(null, "", location.pathname);
+    } else if (want) use(roles[want] || legacy);
+    else use(roles[last] || roles.pult || roles.tseh || legacy);
   } catch (e) {}
 
   function beer(id) { return S.beers.filter(function (b) { return b.id === id; })[0]; }
@@ -195,10 +211,19 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
       .then(function (r) { return r.json(); })
       .then(function (j) {
         busy = false; document.body.classList.remove("busy");
-        if (!j.ok && (j.code === "key" || j.code === "pin" || j.code === "lock")) { if (j.code !== "lock") auth.pin = ""; login(j.error, j.code); return null; }
+        if (!j.ok && (j.code === "key" || j.code === "pin" || j.code === "lock")) {
+          if (j.code !== "lock") { auth.pin = ""; ["pult", "tseh"].forEach(function (x) { if (roles[x] && roles[x].k === auth.k) { if (j.code === "key") delete roles[x]; else roles[x].pin = ""; } }); store(); }
+          login(j.error, j.code); return null;
+        }
         if (j.state) S = j.state;
         if (!j.ok) { toast(j.error || "Не вдалося виконати."); if (S) render(); return null; }
-        S = j; store();
+        roles[j.role] = { k: auth.k, pin: auth.pin }; legacy = null;
+        if (want && want !== j.role) {
+          var miss = want; want = ""; store(); S = null; auth = { k: "", pin: "" };
+          login("На цьому пристрої ще не входили в розділ «" + roleName(miss) + "». Перший вхід — за його секретним посиланням і PIN-кодом.", "key"); return null;
+        }
+        want = ""; S = j; last = j.role; store();
+        try { history.replaceState(null, "", location.pathname + "?r=" + param(j.role)); } catch (e) {}
         if (!ui.tab || TABS[S.role].map(function (t) { return t[0]; }).indexOf(ui.tab) < 0) ui.tab = TABS[S.role][0][0];
         $("login").hidden = true; $("app").hidden = false; $("tabsnav").hidden = false;
         if (!quiet) toast(j.msg);
@@ -211,7 +236,7 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
     $("app").hidden = true; $("tabsnav").hidden = true; $("login").hidden = false;
     $("login-err").textContent = err || "";
     $("login-form").hidden = code === "key" || !auth.k;
-    $("login-text").textContent = !auth.k || code === "key" ? "Відкрийте цю сторінку за посиланням, яке дав менеджер." : "Введіть PIN. На цьому пристрої його більше не питатимуть.";
+    $("login-text").textContent = !auth.k || code === "key" ? "Перший вхід на новому пристрої — за секретним посиланням, яке дав менеджер." : "Введіть PIN. На цьому пристрої його більше не питатимуть.";
   }
 
   /* ---------- Пульт ---------- */
@@ -271,7 +296,7 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
     return h + '<p class="sub">У звіт потрапляє лише відправлене. Ще не відправлено: ' + nf.format(wait) + " л, тобто " + money(wait * S.rate) + ".</p>";
   }
 
-  /* ---------- Цех ---------- */
+  /* ---------- Броварня ---------- */
   function stockVal(b) { return b.id in ui.stock ? ui.stock[b.id] : b.stock; }
   function vStock() {
     var dirty = Object.keys(ui.stock).length > 0;
@@ -347,7 +372,8 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
   var TABS = { pult: [["zbir", "Збір"], ["orders", "Замовлення"], ["clients", "Клієнти"], ["beers", "Пиво"], ["report", "Звіт"]], tseh: [["stock", "Залишки"], ["pack", "Пакет"], ["newbeer", "Нове пиво"]] };
   var VIEWS = { zbir: vZbir, orders: vOrders, clients: vClients, beers: vBeers, report: vReport, stock: vStock, pack: vPack, newbeer: function () { return beerForm(); } };
   function render() {
-    $("role").textContent = S.role === "pult" ? "Пульт" : "Цех";
+    $("role").textContent = roleName(S.role);
+    document.title = "Diysno · " + roleName(S.role);
     $("tabs").innerHTML = TABS[S.role].map(function (x) { return '<button data-act="tab" data-v="' + x[0] + '" aria-pressed="' + (ui.tab === x[0]) + '">' + x[1] + "</button>"; }).join("");
     $("view").innerHTML = VIEWS[ui.tab]();
   }
