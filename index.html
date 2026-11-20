@@ -743,7 +743,7 @@ a { color: inherit; }
   }
 
   function loadCatalog(quiet) {
-    return fetch(API + "?a=cat" + (state.code ? "&c=" + encodeURIComponent(state.code) : ""))
+    return fetch(API + "?a=cat" + (state.code ? "&client=" + encodeURIComponent(state.code) : ""))
       .then(function (r) { return r.json(); })
       .then(function (j) { if (j && j.ok) applyCatalog(j); else throw new Error("bad"); })
       .catch(function () { if (!quiet) showNotice("Не вдалося оновити прайс із сервера. Перезавантажте сторінку, перш ніж замовляти.", true); });
@@ -767,7 +767,7 @@ a { color: inherit; }
     if (!API) { showErrors(["Сторінку ще не підключено до бази замовлень."]); return; }
     var it = items(), t = totals(it), f = state.form;
     var payload = {
-      c: state.code, venue: f.venue.trim(), city: f.city.trim(), contact: f.contact.trim(), phone: f.phone.trim(),
+      client: state.code, venue: f.venue.trim(), city: f.city.trim(), contact: f.contact.trim(), phone: f.phone.trim(),
       address: f.address.trim(), comment: f.comment.trim(), hp: $("f-site").value,
       items: it.map(function (x) { return { id: x.id, qty: x.qty }; })
     };
