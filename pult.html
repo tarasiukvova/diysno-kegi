@@ -251,7 +251,7 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
     var list = S.orders.filter(function (o) { return o.status === "нове"; }), t = { kegs: 0, liters: 0, money: 0 };
     list.forEach(function (o) { t.kegs += o.kegs; t.liters += o.liters; t.money += o.sum; });
     var h = '<div class="row"><div class="grow"><h2>' + esc(S.cycle.title) + "</h2>" + (S.cycle.ship ? '<p class="sub">Відправка: у ' + esc(S.cycle.ship) + "</p>" : '<p class="sub">Дні дедлайну й відправки задаються в налаштуваннях.</p>') + '</div><button class="btn ghost small" data-act="refresh">Оновити</button></div>';
-    h += '<div class="stats"><div class="stat"><b>' + list.length + '</b><span>нових замовлень</span></div><div class="stat"><b>' + t.kegs + "</b><span>кегів · " + nf.format(t.liters) + ' л</span></div><div class="stat"><b>' + money(t.money) + '</b><span>сума збору</span></div><div class="stat hi"><b>' + money(t.liters * S.rate) + "</b><span>мій заробіток</span></div></div>";
+    h += '<div class="stats"><div class="stat"><b>' + list.length + '</b><span>нових замовлень</span></div><div class="stat"><b>' + t.kegs + "</b><span>кегів · " + nf.format(t.liters) + ' л</span></div><div class="stat"><b>' + money(t.money) + '</b><span>сума збору</span></div></div>';
     batches(function (s) { return s.status === "створено"; }).forEach(function (b) {
       h += "<h3>Готується до відправки · партія " + esc(b.id) + "</h3>" + shipList(b.list) + '<div class="row"><button class="btn grow" data-act="print" data-v="' + esc(b.id) + '">Аркуші для друку</button>' +
         (ui.confirm === "sent" + b.id ? '<button class="btn danger" data-act="sent" data-v="' + esc(b.id) + '">Так, відправлено</button>' : '<button class="btn ghost" data-act="ask" data-v="sent' + esc(b.id) + '">Відправлено</button>') + "</div>";
@@ -291,9 +291,9 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
   function vReport() {
     var h = "<h2>Звіт</h2>", MON = ["", "Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
     if (!S.report.length) h += '<p class="sub">Ще нічого не відправлено.</p>';
-    S.report.slice().reverse().forEach(function (r) { var m = String(r[0]).split("-"); h += '<div class="card"><p class="name">' + (MON[Number(m[1])] || r[0]) + " " + (m[0] || "") + '</p><div class="stats"><div class="stat"><b>' + nf.format(r[3]) + '</b><span>літрів відправлено</span></div><div class="stat hi"><b>' + money(r[6]) + "</b><span>заробіток, " + S.rate + ' грн/л</span></div><div class="stat"><b>' + r[1] + "</b><span>замовлень · " + money(r[5]) + "</span></div></div></div>"; });
+    S.report.slice().reverse().forEach(function (r) { var m = String(r[0]).split("-"); h += '<div class="card"><p class="name">' + (MON[Number(m[1])] || r[0]) + " " + (m[0] || "") + '</p><div class="stats"><div class="stat"><b>' + nf.format(r[3]) + '</b><span>літрів відправлено</span></div><div class="stat"><b>' + r[1] + "</b><span>замовлень · " + money(r[5]) + "</span></div></div></div>"; });
     var wait = 0; S.orders.forEach(function (o) { if (o.status === "нове" || o.status === "у відправці") wait += o.liters; });
-    return h + '<p class="sub">У звіт потрапляє лише відправлене. Ще не відправлено: ' + nf.format(wait) + " л, тобто " + money(wait * S.rate) + ".</p>";
+    return h + '<p class="sub">У звіт потрапляє лише відправлене. Ще не відправлено: ' + nf.format(wait) + " л.</p>";
   }
 
   /* ---------- Броварня ---------- */
