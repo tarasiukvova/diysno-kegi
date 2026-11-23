@@ -100,6 +100,11 @@ button.item:hover { background: var(--surface-2); }
 .paper h4 { margin: 0; font: 800 14px/1.2 var(--f-display); color: #111; }
 .paper table { width: 100%; border-collapse: collapse; }
 .paper td, .paper th { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+.paper .pay { margin: 0; padding: 5px 8px; border: 2px solid #111; font: 800 13px/1.2 var(--f-body); text-transform: uppercase; }
+.stk { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; margin-top: 10px; }
+.stk label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.stk input { width: 104px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font: 800 24px/1 var(--f-display); text-align: center; }
+.stk .step button { width: 52px; height: 52px; font-size: 26px; }
 .paper .test { color: #b3261e; font-weight: 700; letter-spacing: .08em; }
 .paper .code { height: 44px; background: repeating-linear-gradient(90deg, #111 0 2px, #fff 2px 4px, #111 4px 7px, #fff 7px 9px, #111 9px 10px, #fff 10px 13px); }
 .paper .ttn { font: 700 18px/1 monospace; letter-spacing: .08em; }
@@ -194,6 +199,9 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
   } catch (e) {}
 
   function beer(id) { return S.beers.filter(function (b) { return b.id === id; })[0]; }
+  function pkey(s) { return s.batch + "|" + s.code + "|" + s.address; }
+  function payer(s) { return s.kegs >= (S.freeShip || 2); }
+  function payTxt(s) { return payer(s) ? "доставка за рахунок броварні" : "доставка за рахунок закладу"; }
   function free(b) { return b.stock == null ? null : Math.max(0, b.stock - b.reserved); }
   function freeText(b) { var f = free(b); return f == null ? "без обліку" : "вільно " + f; }
   function itemsText(items) { return Object.keys(items).filter(function (id) { return items[id] > 0; }).map(function (id) { var b = beer(id); return esc(b ? b.name : id) + " × " + items[id]; }).join(", "); }
@@ -245,7 +253,7 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
     return '<div class="list">' + list.slice().reverse().map(function (o) { return '<button class="item" data-act="order" data-v="' + o.n + '"><span class="row"><span class="name grow">№ ' + o.n + " · " + esc(o.venue) + (o.isNew ? ' <span class="pill acc">новий клієнт</span>' : "") + "</span>" + statusPill(o.status) + '</span><span class="sub">' + itemsText(o.items) + '</span><span class="row sub"><span class="grow">' + esc(o.date) + " · " + esc(o.city) + '</span><span class="num">' + money(o.sum) + "</span></span></button>"; }).join("") + "</div>";
   }
   function shipList(list) {
-    return '<div class="list">' + list.map(function (s) { return '<div class="item"><div class="row"><span class="name grow">' + esc(s.venue) + "</span>" + statusPill(s.status) + '</div><span class="sub">' + esc(s.address || s.city) + " · місць: " + s.seats + ' · ТТН <span class="num">' + esc(s.ttn) + '</span></span><span class="sub">' + itemsText(s.items) + " · замовлення № " + esc(s.orders) + "</span></div>"; }).join("") + "</div>";
+    return '<div class="list">' + list.map(function (s) { return '<div class="item"><div class="row"><span class="name grow">' + esc(s.venue) + "</span>" + statusPill(s.status) + '</div><span class="sub">' + esc(s.address || s.city) + " · місць: " + s.seats + " · " + payTxt(s) + '</span><span class="sub">' + itemsText(s.items) + " · замовлення № " + esc(s.orders) + "</span></div>"; }).join("") + "</div>";
   }
   function vZbir() {
     var list = S.orders.filter(function (o) { return o.status === "нове"; }), t = { kegs: 0, liters: 0, money: 0 };
@@ -297,13 +305,28 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
   }
 
   /* ---------- Броварня ---------- */
-  function stockVal(b) { return b.id in ui.stock ? ui.stock[b.id] : b.stock; }
+  function stockRaw(b) { return b.id in ui.stock ? ui.stock[b.id] : b.raw; }
+  function fmtK(x) { return String(Math.round(x * 100) / 100).replace(".", ","); }
+  function stockInfo(b, raw) {
+    if (raw == null) return "Залишок не ведеться: продається без обмеження.";
+    if (b.unit === "bottle") return "вільно для замовлення: " + Math.max(0, raw - b.reserved);
+    var k = Math.floor(raw / S.kegL + 1e-9), rest = Math.round(raw - k * S.kegL);
+    return "повних кегів: " + k + (rest ? " + " + rest + " л" : "") + " · вільно для замовлення: " + Math.max(0, k - b.reserved);
+  }
   function vStock() {
     var dirty = Object.keys(ui.stock).length > 0;
-    return '<div class="row"><div class="grow"><h2>Залишки</h2><p class="sub">Скільки є фізично. Заброньоване система відніме сама.</p></div><button class="btn ghost small" data-act="refresh">Оновити</button></div><div class="stack big">' + S.beers.filter(function (b) { return b.status !== "draft"; }).map(function (b) {
-      var v = stockVal(b);
-      return '<div class="card"><div class="row"><div class="grow"><p class="name">' + esc(b.name) + '</p><p class="sub">' + (b.unit === "keg" ? "кеги " + S.kegL + " л" : "пляшки") + " · заброньовано " + b.reserved + (b.status === "pause" ? " · на паузі" : "") + '</p></div><div class="step"><button data-act="stock" data-v="' + esc(b.id) + '" data-d="-1" aria-label="Менше">−</button><output>' + (v == null ? "—" : v) + '</output><button data-act="stock" data-v="' + esc(b.id) + '" data-d="1" aria-label="Більше">+</button></div></div>' + (v == null ? '<p class="sub">Залишок не ведеться: продається без обмеження.</p>' : '<button class="linkish" data-act="stocknull" data-v="' + esc(b.id) + '">Не вести залишок цього сорту</button>') + "</div>";
-    }).join("") + '</div><button class="btn wide" data-act="savestock"' + (dirty ? "" : " disabled") + ">Зберегти залишки</button>";
+    return '<div class="row"><div class="grow"><h2>Залишки</h2><p class="sub">Скільки є фізично. Впишіть кеги або літри, друге порахується саме. Заброньоване система відніме сама.</p></div><button class="btn ghost small" data-act="refresh">Оновити</button></div><div class="stack big">' + S.beers.filter(function (b) { return b.status !== "draft"; }).map(function (b) {
+      var v = stockRaw(b), id = esc(b.id), keg = b.unit === "keg";
+      var head = '<div class="row"><div class="grow"><p class="name">' + esc(b.name) + '</p><p class="sub">' + (keg ? "кеги " + S.kegL + " л" : "пляшки") + " · заброньовано " + b.reserved + (b.status === "pause" ? " · на паузі" : "") + "</p></div></div>";
+      var body;
+      if (keg) {
+        body = '<div class="stk"><label>Кеги<input inputmode="decimal" data-stk="k" data-id="' + id + '" value="' + (v == null ? "" : fmtK(v / S.kegL)) + '"></label><label>Літри<input inputmode="numeric" data-stk="l" data-id="' + id + '" value="' + (v == null ? "" : v) + '"></label>' +
+          '<div class="step"><button data-act="stock" data-v="' + id + '" data-d="-1" aria-label="Мінус один кег">−</button><button data-act="stock" data-v="' + id + '" data-d="1" aria-label="Плюс один кег">+</button></div></div>';
+      } else {
+        body = '<div class="step"><button data-act="stock" data-v="' + id + '" data-d="-1" aria-label="Менше">−</button><output>' + (v == null ? "—" : v) + '</output><button data-act="stock" data-v="' + id + '" data-d="1" aria-label="Більше">+</button></div>';
+      }
+      return '<div class="card">' + head + body + '<p class="sub" data-info="' + id + '">' + stockInfo(b, v) + "</p>" + (v == null ? "" : '<button class="linkish" data-act="stocknull" data-v="' + id + '">Не вести залишок цього сорту</button>') + "</div>";
+    }).join("") + '</div><button class="btn wide" id="stk-save" data-act="savestock"' + (dirty ? "" : " disabled") + ">Зберегти залишки</button>";
   }
   function pourHtml(list) {
     var pour = {};
@@ -315,12 +338,12 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
     if (!bs.length && !pv.length) h += '<p class="sub">Замовлень поки немає: ні в поточному зборі, ні в закритих, що чекають відправки.</p>';
     bs.forEach(function (b) {
       h += '<div class="card"><h3 style="margin:0">Партія ' + esc(b.id) + " · налити й зібрати</h3>" + pourHtml(b.list) + "</div>";
-      h += b.list.map(function (s) { return '<label class="card check"><input type="checkbox" data-act="packed" data-v="' + esc(s.ttn) + '"' + (ui.packed[s.ttn] ? " checked" : "") + '><span class="stack" style="gap:4px"><span class="name">' + esc(s.venue) + '</span><span class="sub">' + esc(s.address || s.city) + "</span><span>" + itemsText(s.items) + '</span><span class="sub">Місць: ' + s.seats + ' · ТТН <span class="num">' + esc(s.ttn) + "</span></span></span></label>"; }).join("");
+      h += b.list.map(function (s) { return '<label class="card check"><input type="checkbox" data-act="packed" data-v="' + esc(pkey(s)) + '"' + (ui.packed[pkey(s)] ? " checked" : "") + '><span class="stack" style="gap:4px"><span class="name">' + esc(s.venue) + '</span><span class="sub">' + esc(s.address || s.city) + "</span><span>" + itemsText(s.items) + '</span><span class="sub">Місць: ' + s.seats + " · " + payTxt(s) + "</span></span></label>"; }).join("");
       h += '<button class="btn wide" data-act="print" data-v="' + esc(b.id) + '">Аркуші для друку</button>';
     });
     if (pv.length) {
       h += '<div class="card"><div class="row"><h3 class="grow" style="margin:0">Зараз замовлено · ' + esc(S.cycle.title) + '</h3><span class="pill warn">попередньо</span></div>' + pourHtml(pv) + '<p class="sub">Збір ще відкритий: цифри можуть змінитись, поки менеджер його не закриє.</p></div>';
-      h += '<div class="list">' + pv.map(function (s) { return '<div class="item"><span class="name">' + esc(s.venue) + '</span><span class="sub">' + esc(s.address || s.city) + "</span><span>" + itemsText(s.items) + '</span><span class="sub">Місць: ' + s.seats + " · замовлення № " + esc(s.orders) + "</span></div>"; }).join("") + "</div>";
+      h += '<div class="list">' + pv.map(function (s) { return '<div class="item"><span class="name">' + esc(s.venue) + '</span><span class="sub">' + esc(s.address || s.city) + "</span><span>" + itemsText(s.items) + '</span><span class="sub">Місць: ' + s.seats + " · " + payTxt(s) + " · замовлення № " + esc(s.orders) + "</span></div>"; }).join("") + "</div>";
       h += '<button class="btn ghost wide" data-act="print" data-v="preview">Попередні аркуші</button>';
     }
     return h;
@@ -362,13 +385,15 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
   }
   function papers(batchId) {
     var draft = batchId === "preview", list = draft ? (S.preview || []) : S.shipments.filter(function (s) { return s.batch === batchId; }), pour = {}, h = "";
-    var mark = draft ? "ПОПЕРЕДНЬО · збір ще не закрито" : "ТЕСТОВИЙ ЗРАЗОК";
+    var mark = draft ? "ПОПЕРЕДНЬО · збір ще не закрито" : "";
+    function tag(extra) { return mark ? '<span class="test">' + mark + (extra || "") + "</span>" : ""; }
+    function pay(s) { return '<p class="pay">Доставка: ' + (payer(s) ? "ЗА РАХУНОК ВІДПРАВНИКА (броварні)" : "ЗА РАХУНОК ОТРИМУВАЧА") + "</p>"; }
     list.forEach(function (s) { Object.keys(s.items).forEach(function (id) { pour[id] = (pour[id] || 0) + s.items[id]; }); });
-    h += '<div class="paper">' + (draft ? '<span class="test">' + mark + "</span>" : "") + "<h4>" + (draft ? "Попереднє зведення · " + esc(S.cycle.title) : "Зведення партії " + esc(batchId)) + " · " + esc(S.brewery) + "</h4><table><tr><th>Сорт</th><th>Кількість</th></tr>" + Object.keys(pour).map(function (id) { var b = beer(id); return "<tr><td>" + esc(b ? b.name : id) + "</td><td>" + pour[id] + (b && b.unit === "bottle" ? " пл." : " кег.") + "</td></tr>"; }).join("") + "</table><table><tr><th>Отримувач</th><th>Місць</th><th>ТТН</th></tr>" + list.map(function (s) { return "<tr><td>" + esc(s.venue) + ", " + esc(s.city) + "</td><td>" + s.seats + "</td><td>" + (draft ? "після закриття збору" : esc(s.ttn)) + "</td></tr>"; }).join("") + "</table></div>";
+    h += '<div class="paper">' + tag() + "<h4>" + (draft ? "Попереднє зведення · " + esc(S.cycle.title) : "Зведення партії " + esc(batchId)) + " · " + esc(S.brewery) + "</h4><table><tr><th>Сорт</th><th>Кількість</th></tr>" + Object.keys(pour).map(function (id) { var b = beer(id); return "<tr><td>" + esc(b ? b.name : id) + "</td><td>" + pour[id] + (b && b.unit === "bottle" ? " пл." : " кег.") + "</td></tr>"; }).join("") + "</table><table><tr><th>Отримувач</th><th>Місць</th><th>Доставка</th><th>ТТН</th></tr>" + list.map(function (s) { return "<tr><td>" + esc(s.venue) + ", " + esc(s.city) + "</td><td>" + s.seats + "</td><td>" + (payer(s) ? "броварня" : "отримувач") + "</td><td>" + (draft ? "—" : (s.ttn ? esc(s.ttn) : "________")) + "</td></tr>"; }).join("") + "</table></div>";
     list.forEach(function (s, i) {
-      h += '<div class="paper pb"><span class="test">' + mark + ' · наклейка Нової пошти</span><div class="code"></div><span class="ttn">' + (draft ? "ТТН — після закриття збору" : esc(s.ttn)) + "</span><table><tr><th>Відправник</th><td>" + esc(S.supplier) + ", " + esc(S.sender) + "</td></tr><tr><th>Отримувач</th><td>" + esc([s.venue, s.contact, s.phone].filter(String).join(", ")) + "</td></tr><tr><th>Куди</th><td>" + esc(s.address || s.city) + "</td></tr><tr><th>Місць</th><td>" + s.seats + (s.kegs ? " · кег " + S.kegKg + " кг, " + esc(S.kegSize) + " см" : "") + "</td></tr><tr><th>Опис</th><td>Пиво" + (s.kegs ? " в кегах" : "") + "</td></tr></table></div>";
+      h += '<div class="paper pb">' + tag(" · наклейка Нової пошти") + pay(s) + '<div class="code"></div><span class="ttn">' + (draft ? "ТТН — після створення" : (s.ttn ? esc(s.ttn) : "ТТН: ________")) + "</span><table><tr><th>Відправник</th><td>" + esc(S.supplier) + ", " + esc(S.sender) + "</td></tr><tr><th>Отримувач</th><td>" + esc([s.venue, s.contact, s.phone].filter(String).join(", ")) + "</td></tr><tr><th>Куди</th><td>" + esc(s.address || s.city) + "</td></tr><tr><th>Місць</th><td>" + s.seats + (s.kegs ? " · кег " + S.kegKg + " кг, " + esc(S.kegSize) + " см" : "") + "</td></tr><tr><th>Опис</th><td>Пиво" + (s.kegs ? " в кегах" : "") + "</td></tr></table></div>";
       var total = 0, n = 0;
-      h += '<div class="paper"><span class="test">' + mark + "</span><h4>Видаткова накладна" + (draft ? " (номер — після закриття збору)" : " № " + esc(batchId) + "-" + (i + 1) + " від " + esc(String(s.created).slice(0, 10))) + "</h4><table><tr><th>Постачальник</th><td>" + esc(S.supplier) + (S.supplierInfo ? "<br>" + esc(S.supplierInfo) : "") + "</td></tr><tr><th>Покупець</th><td>" + esc(s.venue) + ", " + esc(s.city) + "</td></tr><tr><th>Підстава</th><td>Замовлення № " + esc(s.orders) + '</td></tr></table><div class="scroll-x"><table><tr><th>№</th><th>Товар</th><th>Од.</th><th>К-сть</th><th>Ціна, грн</th><th>Сума, грн</th></tr>' +
+      h += '<div class="paper">' + tag() + pay(s) + "<h4>Видаткова накладна" + (draft ? " (номер — після закриття збору)" : " № " + esc(batchId) + "-" + (i + 1) + " від " + esc(String(s.created).slice(0, 10))) + "</h4><table><tr><th>Постачальник</th><td>" + esc(S.supplier) + (S.supplierInfo ? "<br>" + esc(S.supplierInfo) : "") + "</td></tr><tr><th>Покупець</th><td>" + esc(s.venue) + ", " + esc(s.city) + "</td></tr><tr><th>Підстава</th><td>Замовлення № " + esc(s.orders) + '</td></tr></table><div class="scroll-x"><table><tr><th>№</th><th>Товар</th><th>Од.</th><th>К-сть</th><th>Ціна, грн</th><th>Сума, грн</th></tr>' +
         Object.keys(s.items).map(function (id) { var b = beer(id), q = s.items[id]; if (!b) return ""; var keg = b.unit === "keg", qty = keg ? q * S.kegL : q, pr = (s.prices && s.prices[id]) || b.price, m = qty * pr; total += m; n++; return "<tr><td>" + n + "</td><td>Пиво «" + esc(b.name) + "»" + (keg ? ", кег " + S.kegL + " л × " + q : ", пляшка") + "</td><td>" + (keg ? "л" : "шт") + "</td><td>" + nf.format(qty) + "</td><td>" + nf.format(pr) + "</td><td>" + nf.format(m) + "</td></tr>"; }).join("") +
         '<tr><th colspan="5">Разом</th><th>' + nf.format(total) + "</th></tr></table></div><span>Відвантажив ____________ &nbsp;&nbsp; Отримав ____________</span></div>";
     });
@@ -386,6 +411,18 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
   }
   function val(id) { var el = $(id); return el ? el.value.trim() : ""; }
   document.addEventListener("input", function (e) {
+    var sk = e.target.getAttribute && e.target.getAttribute("data-stk");
+    if (sk) {
+      var sid = e.target.getAttribute("data-id"), sb = beer(sid), x = parseFloat(String(e.target.value).replace(",", "."));
+      if (!sb || isNaN(x) || x < 0) return;
+      var raw = sk === "k" ? Math.round(x * S.kegL) : Math.round(x);
+      ui.stock[sid] = raw;
+      var card = e.target.closest(".card"), other = card.querySelector('[data-stk="' + (sk === "k" ? "l" : "k") + '"]');
+      if (other) other.value = sk === "k" ? raw : fmtK(raw / S.kegL);
+      var inf = card.querySelector("[data-info]"); if (inf) inf.textContent = stockInfo(sb, raw);
+      var sv = $("stk-save"); if (sv) sv.disabled = false;
+      return;
+    }
     if (e.target.id === "q") { ui.q = e.target.value; var pos = e.target.selectionStart; render(); var q = $("q"); q.focus(); try { q.setSelectionRange(pos, pos); } catch (err) {} }
     if (e.target.id === "d-point" && ui.draft) { ui.draft.address = e.target.value; $("d-addr").value = e.target.value; }
     if (e.target.id === "d-addr" && ui.draft) ui.draft.address = e.target.value;
@@ -413,7 +450,7 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
     else if (a === "dq") { b = beer(v); var f = free(b), q2 = Math.max(0, (ui.draft.items[v] || 0) + d); if (f != null) q2 = Math.min(f, q2); ui.draft.items[v] = q2; newOrderSheet(ui.draft.code, true); }
     else if (a === "repeat") { o = orderOf(Number(v)); ui.draft.items = {}; Object.keys(o.items).forEach(function (id) { var x = beer(id); if (x && x.status === "on" && o.items[id] > 0) { var fr = free(x); ui.draft.items[id] = fr == null ? o.items[id] : Math.min(fr, o.items[id]); } }); if (o.address) ui.draft.address = o.address; newOrderSheet(ui.draft.code, true); toast("Підставлено минуле замовлення"); }
     else if (a === "placedraft") { var items = Object.keys(ui.draft.items).filter(function (id) { return ui.draft.items[id] > 0; }).map(function (id) { return { id: id, qty: ui.draft.items[id] }; }); if (!items.length) { toast("Додайте хоча б одну позицію"); return; } var payload = { code: ui.draft.code, address: val("d-addr"), items: items }; closeSheet(); call("ordnew", payload).then(function (j) { if (j) { ui.tab = "zbir"; render(); } }); }
-    else if (a === "stock") { b = beer(v); var cur = stockVal(b); ui.stock[v] = Math.max(b.reserved, (cur == null ? b.reserved : cur) + d); render(); }
+    else if (a === "stock") { b = beer(v); var cur = stockRaw(b), u = b.unit === "keg" ? S.kegL : 1; ui.stock[v] = Math.max(b.reserved * u, (cur == null ? b.reserved * u : cur) + d * u); render(); }
     else if (a === "stocknull") { ui.stock[v] = null; render(); }
     else if (a === "savestock") { var send = ui.stock; ui.stock = {}; call("stock", { items: send }).then(function (j) { if (!j) { ui.stock = send; render(); } }); }
     else if (a === "newbeer") sheet(beerForm());
