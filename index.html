@@ -482,7 +482,10 @@ a { color: inherit; }
   } catch (e) {}
   var urlCode = "";
   try { urlCode = validCode(new URLSearchParams(location.search).get("c")); } catch (e) {}
-  if (urlCode) state.code = urlCode;
+  if (urlCode) {
+    if (state.code && state.code !== urlCode) KEEP.forEach(function (k) { state.form[k] = ""; });
+    state.code = urlCode;
+  }
 
   function maxOf(id) {
     var b = byId[id];
