@@ -441,7 +441,10 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
     if (e.target.id === "d-addr" && ui.draft) ui.draft.address = e.target.value;
   });
   document.addEventListener("change", function (e) { var el = e.target.closest("[data-act=packed]"); if (el) { ui.packed[el.getAttribute("data-v")] = el.checked; store(); } });
-  $("sheet").addEventListener("click", function (e) { if (e.target.id === "sheet") closeSheet(); });
+  var downOnSheet = false;
+  $("sheet").addEventListener("mousedown", function (e) { downOnSheet = e.target.id === "sheet"; });
+  $("sheet").addEventListener("touchstart", function (e) { downOnSheet = e.target.id === "sheet"; }, { passive: true });
+  $("sheet").addEventListener("click", function (e) { if (e.target.id === "sheet" && downOnSheet) closeSheet(); downOnSheet = false; });
   $("login-form").addEventListener("submit", function (e) { e.preventDefault(); auth.pin = $("pin").value.trim(); $("pin").value = ""; call("state", {}, true); });
   document.addEventListener("click", function (e) {
     var el = e.target.closest("[data-act]"); if (!el || el.tagName === "INPUT" || busy) return;
