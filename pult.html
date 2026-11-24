@@ -124,12 +124,26 @@ body.busy .busybar { display: block; }
 body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button { pointer-events: none; opacity: .7; }
 @media (prefers-reduced-motion: no-preference) { .busybar i { animation: run 1s linear infinite; } @keyframes run { from { transform: translateX(-100%); } to { transform: translateX(250%); } } }
 #print { display: none; }
+.paper.inv { gap: 10px; font-size: 13px; line-height: 1.35; }
+.paper.inv h4 { font-size: 16px; text-align: left; }
+.paper.inv table.kv td, .paper.inv table.kv th { border: 0; padding: 2px 6px 2px 0; vertical-align: top; }
+.paper.inv table.kv th { width: 130px; font-weight: 600; white-space: nowrap; }
+.paper.inv table.items th { background: #f1f1f1; font-size: 12px; }
+.paper.inv .r { text-align: right; white-space: nowrap; }
+.paper.inv table.tot { width: auto; margin-left: auto; }
+.paper.inv table.tot td, .paper.inv table.tot th { border: 0; padding: 1px 0 1px 18px; text-align: right; }
+.paper.inv p { margin: 0; }
+.paper.inv .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 12px; }
+.paper.inv .foot { font-size: 11px; color: #444; }
+.paper .warn { color: #b3261e; font-weight: 600; }
+.sub-h { margin: 14px 0 2px; font: 700 15px/1.2 var(--f-display); }
 @media print {
   html, body { background: #fff; height: auto; }
   body > *:not(#print) { display: none !important; }
   #print { display: grid; gap: 8mm; color: #111; }
   .paper { border: 0; border-radius: 0; padding: 0; font-size: 12pt; break-inside: avoid; }
   .paper.pb { break-before: page; }
+  .paper .nop { display: none; }
   .paper .code { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   @page { margin: 12mm; }
 }
@@ -383,6 +397,67 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
       S.beers.filter(function (b) { return b.status === "on"; }).map(function (b) { var f = free(b), q = ui.draft.items[b.id] || 0; return '<div class="item"><div class="row"><div class="grow"><span class="name">' + esc(b.name) + '</span><p class="sub">' + freeText(b) + '</p></div><div class="step"><button data-act="dq" data-v="' + esc(b.id) + '" data-d="-1" aria-label="Менше">−</button><output>' + q + '</output><button data-act="dq" data-v="' + esc(b.id) + '" data-d="1" aria-label="Більше"' + (f != null && q >= f ? " disabled" : "") + ">+</button></div></div></div>"; }).join("") +
       '</div><button class="btn wide" data-act="placedraft">Записати замовлення</button>');
   }
+  /* ---------- видаткова накладна ---------- */
+  var nf2 = new Intl.NumberFormat("uk-UA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  var MONTHS = ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"];
+  function plural(n, f) { var a = n % 100, b = n % 10; return a > 10 && a < 15 ? f[2] : b === 1 ? f[0] : b > 1 && b < 5 ? f[1] : f[2]; }
+  function triad(n, fem) {
+    var U = ["", "один", "два", "три", "чотири", "п'ять", "шість", "сім", "вісім", "дев'ять"], UF = ["", "одна", "дві"],
+      T = ["десять", "одинадцять", "дванадцять", "тринадцять", "чотирнадцять", "п'ятнадцять", "шістнадцять", "сімнадцять", "вісімнадцять", "дев'ятнадцять"],
+      D = ["", "", "двадцять", "тридцять", "сорок", "п'ятдесят", "шістдесят", "сімдесят", "вісімдесят", "дев'яносто"],
+      H = ["", "сто", "двісті", "триста", "чотириста", "п'ятсот", "шістсот", "сімсот", "вісімсот", "дев'ятсот"], o = [], t = n % 100, u = n % 10;
+    if (n >= 100) o.push(H[Math.floor(n / 100)]);
+    if (t >= 10 && t < 20) o.push(T[t - 10]);
+    else { if (t >= 20) o.push(D[Math.floor(t / 10)]); if (u) o.push(fem && u < 3 ? UF[u] : U[u]); }
+    return o.join(" ");
+  }
+  function wordsInt(n) {
+    if (n === 0) return "нуль";
+    var o = [], m = Math.floor(n / 1e6), th = Math.floor((n % 1e6) / 1000), r = n % 1000;
+    if (m) o.push(triad(m, false) + " " + plural(m, ["мільйон", "мільйони", "мільйонів"]));
+    if (th) o.push(triad(th, true) + " " + plural(th, ["тисяча", "тисячі", "тисяч"]));
+    if (r) o.push(triad(r, true));
+    return o.join(" ");
+  }
+  function uah(x) {
+    var c = Math.round(x * 100), g = Math.floor(c / 100), k = c % 100, w = wordsInt(g) + " " + plural(g, ["гривня", "гривні", "гривень"]);
+    return w.charAt(0).toUpperCase() + w.slice(1) + " " + (k < 10 ? "0" : "") + k + " " + plural(k, ["копійка", "копійки", "копійок"]);
+  }
+  function invDate(s) {
+    var m = /^(\d\d)\.(\d\d)\.(\d{4})/.exec(String(s.created || ""));
+    return m ? { d: m[1], m: m[2], y: m[3], long: parseInt(m[1], 10) + " " + MONTHS[parseInt(m[2], 10) - 1] + " " + m[3] + " р." } : null;
+  }
+  function invNo(s) {
+    var dt = invDate(s); if (!dt) return String(s.batch);
+    var same = S.shipments.filter(function (x) { return invDate(x) && invDate(x).d === dt.d && invDate(x).m === dt.m && invDate(x).y === dt.y; }), k = same.indexOf(s) + 1;
+    return dt.d + dt.m + dt.y + "/" + (k < 10 ? "0" : "") + k;
+  }
+  function br(t) { return esc(t).replace(/\n/g, "<br>"); }
+  function taxLine(code) { var d = String(code || "").replace(/\D/g, ""); return d ? (d.length === 8 ? "код за ЄДРПОУ " : "ІПН ") + d : ""; }
+  function invoice(s, draft) {
+    var c = (S.clients || []).filter(function (x) { return x.code === s.code; })[0], dt = invDate(s), total = 0, n = 0, rows = "", buyer, miss = !c || !c.legal;
+    buyer = miss ? esc(s.venue) + (s.city ? ", " + esc(s.city) : "") : esc(c.legal) + (c.taxId ? "<br>" + esc(taxLine(c.taxId)) : "") + (c.legalAddr ? "<br>" + esc(c.legalAddr) : "");
+    var desc = S.invDesc === undefined ? "непастеризоване нефільтроване" : S.invDesc, ukt = S.ukt === undefined ? "2203 00 1000" : S.ukt;
+    Object.keys(s.items).forEach(function (id) {
+      var b = beer(id), q = s.items[id]; if (!b) return;
+      var keg = b.unit === "keg", pr = keg ? Math.round(((s.prices && s.prices[id]) || b.price) * S.kegL * 100) / 100 : ((s.prices && s.prices[id]) || b.price), m = Math.round(q * pr * 100) / 100, vol = keg ? S.kegL : S.bottleL;
+      total += m; n++;
+      rows += "<tr><td>" + n + '</td><td>Пиво "' + esc(b.name) + '"' + (desc ? " " + esc(desc) : "") + ", місткість " + String(vol).replace(".", ",") + " л." + (b.abv ? ", ABV " + String(b.abv).replace(".", ",") : "") + (ukt ? " Код УКТ ЗЕД " + esc(ukt) : "") + '</td><td class="r">' + q + "</td><td>шт</td><td class=\"r\">" + nf2.format(pr) + '</td><td class="r">' + nf2.format(m) + "</td></tr>";
+    });
+    total = Math.round(total * 100) / 100;
+    var vat = Math.round(total / 6 * 100) / 100, sup = S.supplier || S.brewery;
+    return '<div class="paper pb inv">' + (draft ? '<span class="test">ПОПЕРЕДНЬО · збір ще не закрито</span>' : "") + '<p class="pay nop">Доставка: ' + (payer(s) ? "ЗА РАХУНОК ВІДПРАВНИКА (броварні)" : "ЗА РАХУНОК ОТРИМУВАЧА") + "</p>" +
+      (miss ? '<p class="warn nop">Немає реквізитів покупця: відкрийте «Клієнти» → заклад → «Дані закладу» й заповніть блок «Для накладної». Поки що друкується назва закладу.</p>' : "") +
+      "<h4>Видаткова накладна" + (draft ? " (номер і дата — після закриття збору)" : " № " + esc(invNo(s)) + " від " + (dt ? dt.long : "")) + '</h4><table class="kv"><tr><th>Постачальник:</th><td>' + br(sup) + (S.supplierInfo ? "<br>" + br(S.supplierInfo) : "") + "</td></tr><tr><th>Покупець:</th><td>" + buyer + "</td></tr>" +
+      (c && c.contract ? "<tr><th>Договір:</th><td>Договір поставки №" + esc(c.contract) + (c.contractDate ? " від " + esc(c.contractDate) + " р." : "") + "</td></tr>" : "") +
+      "<tr><th>Склад:</th><td>Основний склад</td></tr>" + (s.address ? "<tr><th>Адреса доставки:</th><td>" + esc(s.address) + "</td></tr>" : "") +
+      '</table><div class="scroll-x"><table class="items"><tr><th>№</th><th>Товар</th><th>Кіл-сть</th><th>Од.</th><th>Ціна з ПДВ</th><th>Сума з ПДВ</th></tr>' + rows + "</table></div>" +
+      '<table class="tot"><tr><th>Всього:</th><td>' + nf2.format(total) + "</td></tr><tr><th>У тому числі ПДВ:</th><td>" + nf2.format(vat) + "</td></tr></table>" +
+      "<p>Всього найменувань " + n + ", на суму " + nf2.format(total) + " грн.<br>" + esc(uah(total)) + "<br>У т.ч. ПДВ: " + esc(uah(vat)) + "</p>" +
+      '<div class="sign"><div><b>Від постачальника*</b><br><br>' + (S.director ? esc(S.director) : "____________________") + '</div><div><b>Отримав(ла)</b><br><br>____________________ &nbsp; № ______ від ____________</div></div>' +
+      '<p class="foot">* Відповідальний за здійснення господарської операції і правильність її оформлення</p></div>';
+  }
+
   function papers(batchId) {
     var draft = batchId === "preview", list = draft ? (S.preview || []) : S.shipments.filter(function (s) { return s.batch === batchId; }), pour = {}, h = "";
     var mark = draft ? "ПОПЕРЕДНЬО · збір ще не закрито" : "";
@@ -392,10 +467,7 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
     h += '<div class="paper">' + tag() + "<h4>" + (draft ? "Попереднє зведення · " + esc(S.cycle.title) : "Зведення партії " + esc(batchId)) + " · " + esc(S.brewery) + "</h4><table><tr><th>Сорт</th><th>Кількість</th></tr>" + Object.keys(pour).map(function (id) { var b = beer(id); return "<tr><td>" + esc(b ? b.name : id) + "</td><td>" + pour[id] + (b && b.unit === "bottle" ? " пл." : " кег.") + "</td></tr>"; }).join("") + "</table><table><tr><th>Отримувач</th><th>Місць</th><th>Доставка</th><th>ТТН</th></tr>" + list.map(function (s) { return "<tr><td>" + esc(s.venue) + ", " + esc(s.city) + "</td><td>" + s.seats + "</td><td>" + (payer(s) ? "броварня" : "отримувач") + "</td><td>" + (draft ? "—" : (s.ttn ? esc(s.ttn) : "________")) + "</td></tr>"; }).join("") + "</table></div>";
     list.forEach(function (s, i) {
       h += '<div class="paper pb">' + tag(" · наклейка Нової пошти") + pay(s) + '<div class="code"></div><span class="ttn">' + (draft ? "ТТН — після створення" : (s.ttn ? esc(s.ttn) : "ТТН: ________")) + "</span><table><tr><th>Відправник</th><td>" + esc(S.supplier) + ", " + esc(S.sender) + "</td></tr><tr><th>Отримувач</th><td>" + esc([s.venue, s.contact, s.phone].filter(String).join(", ")) + "</td></tr><tr><th>Куди</th><td>" + esc(s.address || s.city) + "</td></tr><tr><th>Місць</th><td>" + s.seats + (s.kegs ? " · кег " + S.kegKg + " кг, " + esc(S.kegSize) + " см" : "") + "</td></tr><tr><th>Опис</th><td>Пиво" + (s.kegs ? " в кегах" : "") + "</td></tr></table></div>";
-      var total = 0, n = 0;
-      h += '<div class="paper">' + tag() + pay(s) + "<h4>Видаткова накладна" + (draft ? " (номер — після закриття збору)" : " № " + esc(batchId) + "-" + (i + 1) + " від " + esc(String(s.created).slice(0, 10))) + "</h4><table><tr><th>Постачальник</th><td>" + esc(S.supplier) + (S.supplierInfo ? "<br>" + esc(S.supplierInfo) : "") + "</td></tr><tr><th>Покупець</th><td>" + esc(s.venue) + ", " + esc(s.city) + "</td></tr><tr><th>Підстава</th><td>Замовлення № " + esc(s.orders) + '</td></tr></table><div class="scroll-x"><table><tr><th>№</th><th>Товар</th><th>Од.</th><th>К-сть</th><th>Ціна, грн</th><th>Сума, грн</th></tr>' +
-        Object.keys(s.items).map(function (id) { var b = beer(id), q = s.items[id]; if (!b) return ""; var keg = b.unit === "keg", qty = keg ? q * S.kegL : q, pr = (s.prices && s.prices[id]) || b.price, m = qty * pr; total += m; n++; return "<tr><td>" + n + "</td><td>Пиво «" + esc(b.name) + "»" + (keg ? ", кег " + S.kegL + " л × " + q : ", пляшка") + "</td><td>" + (keg ? "л" : "шт") + "</td><td>" + nf.format(qty) + "</td><td>" + nf.format(pr) + "</td><td>" + nf.format(m) + "</td></tr>"; }).join("") +
-        '<tr><th colspan="5">Разом</th><th>' + nf.format(total) + "</th></tr></table></div><span>Відвантажив ____________ &nbsp;&nbsp; Отримав ____________</span></div>";
+      h += invoice(s, draft);
     });
     return h;
   }
@@ -420,6 +492,12 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
       '<div class="field"><label for="c-phone">Телефон</label><input id="c-phone" type="tel" value="' + esc(c.phone) + '"></div></div>' +
       '<div class="field"><label for="c-contact">Контактна особа</label><input id="c-contact" value="' + esc(c.contact) + '"></div>' +
       '<div class="field"><label for="c-points">Доставка: кожна адреса з нового рядка</label><textarea id="c-points" rows="4">' + esc(c.points.join("\n")) + "</textarea></div>" +
+      '<h3 class="sub-h">Для накладної</h3><p class="sub">Заповнюється один раз за документами або договором закладу. Без цього в накладній буде лише назва закладу.</p>' +
+      '<div class="field"><label for="c-legal">Юридична назва покупця</label><input id="c-legal" value="' + esc(c.legal || "") + '" placeholder="Фізична особа-підприємець Прізвище Імʼя По батькові · або ТОВ «Назва»"></div>' +
+      '<div class="two"><div class="field"><label for="c-tax">ІПН (10 цифр) або ЄДРПОУ (8)</label><input id="c-tax" inputmode="numeric" value="' + esc(c.taxId || "") + '"></div>' +
+      '<div class="field"><label for="c-cno">Договір №</label><input id="c-cno" value="' + esc(c.contract || "") + '" placeholder="02/07-24"></div></div>' +
+      '<div class="two"><div class="field"><label for="c-cdate">Договір від</label><input id="c-cdate" value="' + esc(c.contractDate || "") + '" placeholder="18.07.2024"></div><div></div></div>' +
+      '<div class="field"><label for="c-laddr">Юридична адреса</label><textarea id="c-laddr" rows="2">' + esc(c.legalAddr || "") + "</textarea></div>" +
       '<button class="btn wide" data-act="savecli">Зберегти</button>');
   }
   function val(id) { var el = $(id); return el ? el.value.trim() : ""; }
@@ -464,7 +542,7 @@ body.busy .btn, body.busy .item, body.busy .step button, body.busy .tabs button 
     else if (a === "copy") { var c = S.clients.filter(function (x) { return x.code === v; })[0]; try { navigator.clipboard.writeText(c.link).then(function () { toast("Посилання скопійовано"); }, function () { sheet('<h2>Посилання клієнта</h2><p class="name" style="overflow-wrap:anywhere">' + esc(c.link) + "</p>"); }); } catch (err) { sheet('<h2>Посилання клієнта</h2><p class="name" style="overflow-wrap:anywhere">' + esc(c.link) + "</p>"); } }
     else if (a === "neworder") newOrderSheet(v);
     else if (a === "cliform") cliForm(v);
-    else if (a === "savecli") { var cd = { code: ui.cli, name: val("c-name"), other: val("c-other"), city: val("c-city"), phone: val("c-phone"), contact: val("c-contact"), points: ($("c-points") ? $("c-points").value : "").split("\n") }; if (!cd.name) { toast("Вкажіть назву закладу"); return; } closeSheet(); call("cliedit", { client: cd }); }
+    else if (a === "savecli") { var cd = { code: ui.cli, name: val("c-name"), other: val("c-other"), city: val("c-city"), phone: val("c-phone"), contact: val("c-contact"), points: ($("c-points") ? $("c-points").value : "").split("\n"), legal: val("c-legal"), taxId: val("c-tax"), contract: val("c-cno"), contractDate: val("c-cdate"), legalAddr: val("c-laddr") }; if (!cd.name) { toast("Вкажіть назву закладу"); return; } closeSheet(); call("cliedit", { client: cd }); }
     else if (a === "dq") { b = beer(v); var f = free(b), q2 = Math.max(0, (ui.draft.items[v] || 0) + d); if (f != null) q2 = Math.min(f, q2); ui.draft.items[v] = q2; newOrderSheet(ui.draft.code, true); }
     else if (a === "repeat") { o = orderOf(Number(v)); ui.draft.items = {}; Object.keys(o.items).forEach(function (id) { var x = beer(id); if (x && x.status === "on" && o.items[id] > 0) { var fr = free(x); ui.draft.items[id] = fr == null ? o.items[id] : Math.min(fr, o.items[id]); } }); if (o.address) ui.draft.address = o.address; newOrderSheet(ui.draft.code, true); toast("Підставлено минуле замовлення"); }
     else if (a === "placedraft") { var items = Object.keys(ui.draft.items).filter(function (id) { return ui.draft.items[id] > 0; }).map(function (id) { return { id: id, qty: ui.draft.items[id] }; }); if (!items.length) { toast("Додайте хоча б одну позицію"); return; } var payload = { code: ui.draft.code, address: val("d-addr"), items: items }; closeSheet(); call("ordnew", payload).then(function (j) { if (j) { ui.tab = "zbir"; render(); } }); }
